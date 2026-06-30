@@ -1,44 +1,74 @@
-# Simulation-First Execution Guidelines
+# Simulation-First Execution
 
 ## Overview
-In the **Safe On-Chain Solana Agent Skill**, every state-changing transaction must be simulated against the live mainnet state before a signature is requested. This `Simulation-First` approach is the primary defense against drained wallets, MEV sandwich attacks, and wasted compute fees.
+Simulation is the core safety mechanism in the Safe On-Chain Agent Skill. By dry-running transactions against the live Solana mainnet state *before* requesting user signatures, we can predict exact outcomes, prevent failed transactions, and eliminate unnecessary compute fees.
 
-## Why Simulate?
-Standard agentic tools often construct a transaction and broadcast it blindly. On Solana, where state changes rapidly, this can lead to:
-- **Failed Transactions:** Wasted lamports due to unexpected state changes or insufficient compute.
-- **Slippage Violations:** Executing a swap at a terrible price because the agent hallucinated the parameters.
-- **Account Errors:** Attempting to interact with uninitialized Token Accounts.
+## Structuring Simulation Requests
+To accurately simulate a transaction, construct a standard request using the `simulateTransaction` RPC method.
 
-## The Simulation Workflow
-
-### 1. Construct the Transaction
-The AI Agent or underlying tool constructs the `VersionedTransaction` or `Transaction` object as usual. **Do not sign it yet.**
-
-### 2. Run the RPC Simulation
-Send the unsigned transaction to the RPC node using the `simulateTransaction` method:
 ```typescript
 const { value: simResult } = await connection.simulateTransaction(transaction, {
-    sigVerify: false,
-    replaceRecentBlockhash: true,
-    commitment: 'confirmed'
+    sigVerify: false,                     // Do not require valid signatures for simulation
+    replaceRecentBlockhash: true,         // Ensure it simulates even if the blockhash is slightly old
+    commitment: 'confirmed',              // Use confirmed state to avoid simulating against dropped forks
+    innerInstructions: true,              // Crucial for debugging complex DeFi routes
+    returnAccounts: true                  // Fetch state changes for specific accounts
 });
 ```
 
-### 3. Pre-Flight Checks on Simulation Results
+## What to Check in Simulation Results
 
-The middleware must evaluate the `simResult` against the following criteria:
+Before allowing an agent to proceed with signing or execution, the middleware must validate the following fields:
 
-- **Program Errors (`simResult.err`):** 
-  If `err` is not null, the transaction will fail. Map the error code (e.g., `0x1` for insufficient funds) using the `error-handling` module and prompt the agent to adjust parameters.
-  
-- **Compute Unit (CU) Budget:** 
-  Check `simResult.unitsConsumed`. Ensure the transaction's requested compute budget is greater than the consumed units (with a safe 10-15% buffer). If it exceeds the limit, instruct the agent to add a `ComputeBudgetProgram.setComputeUnitLimit` instruction.
-  
-- **Slippage & Token Balances:** 
-  Parse the simulation logs (`simResult.logs`) or use the `return_data` (if the program supports it) to verify the exact output amount of a swap. Compare this against the user's maximum slippage tolerance. If it violates the bounds, abort the transaction and recalculate the route.
+- **Compute Units (CU):** 
+  Check `simResult.unitsConsumed`. Ensure the transaction's requested compute budget is greater than the consumed units (include a 10% safety buffer).
+- **Program Errors (`err`):** 
+  If `simResult.err` is not null, the transaction will definitively fail.
+- **Slippage & Balances:** 
+  If using `returnAccounts`, compare the pre- and post-balances of the token accounts involved. Ensure the output amount meets the user's minimum expected return (slippage tolerance).
+- **Logs (`logs`):** 
+  Scan `simResult.logs` for `insufficient funds`, `slippage exceeded`, or program-specific panics.
 
-## Agent Instructions
-When an AI agent interacts with this module, it must follow these rules:
-1. **Never skip simulation:** If a tool tries to bypass simulation, block the execution.
-2. **Read the Logs:** If a simulation fails, do not just say "it failed". Read the `simResult.logs` to determine exactly *which* instruction failed and *why*, then self-correct.
-3. **Prompt the User:** If a simulation succeeds but the slippage is dangerously high (e.g., > 5%), pause execution and ask for explicit human confirmation.
+## Interpreting Common Simulation Failures
+
+When `simResult.err` is present, use the logs to diagnose the issue:
+
+| Error / Log Signature | Meaning | Agent Action |
+| :--- | :--- | :--- |
+| `InstructionError: [0, {"Custom": 1}]` (0x1) | Insufficient funds or slippage threshold violated. | Recalculate route, increase slippage slightly, or reduce input amount. |
+| `InstructionError: [0, "AccountNotInitialized"]` | Trying to send tokens to an ATA that doesn't exist. | Add an `AssociatedTokenAccount` creation instruction to the transaction. |
+| `Exceeded CUs` / `ComputationalBudgetExceeded` | The transaction ran out of compute units. | Add `ComputeBudgetProgram.setComputeUnitLimit` with a higher limit. |
+| `BlockhashNotFound` | The blockhash expired during simulation prep. | Fetch a new blockhash and reconstruct. |
+
+## Examples: Good vs. Bad Handling
+
+### ❌ Bad: Blind Execution
+```typescript
+// The agent hallucinates a route and blindly sends it
+const txid = await connection.sendTransaction(tx, [keypair]);
+// Result: Fails on-chain, user loses transaction fees, execution halts.
+```
+
+### ✅ Good: Simulation-First Adjustment
+```typescript
+// 1. Simulate first
+const sim = await connection.simulateTransaction(tx, config);
+
+if (sim.value.err) {
+    if (sim.value.logs.some(l => l.includes("Exceeded CUs"))) {
+        // 2. Adjust parameters based on simulation data
+        const safeLimit = Math.ceil(sim.value.unitsConsumed * 1.15);
+        tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: safeLimit }));
+        
+        // 3. Re-simulate or proceed to safe execution
+        await executor.safeExecute(tx);
+    } else {
+        throw new Error("Simulation failed for unrecoverable reason.");
+    }
+}
+```
+
+## Best Practices
+- **Never bypass simulation:** Even "simple" transfers should be simulated to ensure the destination account is valid.
+- **Provide semantic feedback:** If a simulation fails, the middleware should feed the specific reason (e.g., "Slippage exceeded by 0.5%") back to the LLM context so the agent can reason about the fix.
+- **Fail securely:** If a simulation fails and cannot be auto-corrected, abort the operation entirely and notify the user.
