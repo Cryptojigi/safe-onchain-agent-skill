@@ -1,163 +1,121 @@
-# Safe On-Chain Agent Skill
+# Safe On-Chain Solana Agent Skill
 
-**Production-grade safety middleware and execution environment for autonomous AI agents on Solana.**
+**Production-grade safety middleware for autonomous AI agents on Solana.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Framework: Solana AI Kit](https://img.shields.io/badge/Framework-Solana_AI_Kit-purple.svg)](https://github.com/sendaifun/solana-ai-kit)
+[![Framework: Solana AI Kit](https://img.shields.io/badge/Framework-Solana_AI_Kit-purple.svg)](https://github.com/solanabr/solana-ai-kit)
 [![Version: 1.0.0](https://img.shields.io/badge/Version-1.0.0-green.svg)]()
 
 ---
 
 ## 🛑 The Problem: Agentic Trust on Solana
 
-As AI agents move from read-only observers to active on-chain participants, the stakes are significantly higher. Standard agent tooling blindly signs transactions, leading to drained wallets from hallucinated parameters, MEV sandwich attacks due to incorrect slippage, or completely stalled workflows when RPCs return transient errors. 
+As AI agents transition from read-only observers to active on-chain participants, the risks increase dramatically. Standard tooling often leads to hallucinated transaction parameters, incorrect slippage causing MEV attacks, drained wallets, or stalled workflows due to transient RPC errors and expired blockhashes.
 
-An agent cannot truly act autonomously if a human is required to constantly monitor its execution, manually adjust slippage, or reset its state after a failed transaction.
+An agent cannot operate truly autonomously if a human must constantly monitor execution, manually adjust parameters, or intervene after every failure.
 
-## 🛡️ The Solution: Simulation-First Middleware
+## 🛡️ The Solution: Simulation-First Safety Middleware
 
-The **Safe On-Chain Agent Skill** introduces a rigorous safety middleware layer for the [Solana AI Kit](https://github.com/sendaifun/solana-ai-kit). It treats every agent intent as untrusted until mathematically verified via local pre-flight checks and mainnet simulation.
+The **Safe On-Chain Solana Agent Skill** provides a rigorous safety layer for the [Solana AI Kit](https://github.com/solanabr/solana-ai-kit). It treats every agent-proposed action as untrusted until verified through pre-flight checks and mainnet simulation.
 
-By utilizing scoped permissions, intelligent error recovery, and self-healing patterns, this skill ensures that your AI agents execute reliably, securely, and autonomously—even in highly volatile market conditions.
+By combining **scoped permissions**, **intelligent error recovery**, and **self-healing patterns**, this skill enables agents to execute reliably and autonomously — even under volatile conditions.
 
 ---
 
 ## ✨ Key Features
 
-- **Simulation-First Execution:** No transaction is ever broadcast blindly. Every instruction is simulated against current mainnet state to verify exact token balances, slippage bounds, and compute budget constraints before signing.
-- **Scoped Permissions & Wallet Hygiene:** Implement session keys and zero-trust policies. Agents are granted granular, time-bound allowances (e.g., "swap up to 10 USDC on Jupiter") rather than holding god-mode private keys.
-- **Intelligent Error Parsing + Autonomous Retry:** Translates cryptic Solana program errors (e.g., `0x1`, `0x1771`) into semantic meaning. Automatically heals and retries on transient RPC errors, blockhash expirations, or minor slippage failures.
-- **Pre-Flight Checks:** Validates token accounts, computes exact rent exemptions, and verifies required lamports for fees before initiating any complex on-chain logic.
-- **Progressive / Token-Efficient Loading:** Designed for LLM context windows. Only the required ABIs and tool schemas are loaded into the prompt context when needed, saving tokens and reducing hallucination vectors.
-- **Deep Composability:** Acts as a wrapper around existing Solana AI Kit tools (Jupiter, Meteora, Tensor), injecting safety guarantees without rewriting the underlying execution logic.
+- **Simulation-First Execution** — Every transaction is simulated against live mainnet state before signing. This validates exact balances, slippage, compute units, and account states.
+- **Scoped Permissions & Wallet Hygiene** — Supports session keys and granular, time-bound allowances instead of exposing full private keys.
+- **Intelligent Error Parsing + Autonomous Retry** — Translates raw Solana program errors into meaningful feedback. Automatically recovers from transient RPC issues, blockhash expirations, and minor slippage failures.
+- **Pre-Flight Validation** — Checks token accounts, rent exemptions, fee lamports, and required state before any on-chain action.
+- **Progressive / Token-Efficient Loading** — Only relevant knowledge and schemas are loaded into context when needed, reducing token usage and hallucination risk.
+- **Deep Composability** — Works as a safety wrapper around existing tools (Jupiter, Meteora, etc.) without requiring changes to the underlying skills.
 
 ---
 
 ## 🏗️ Architecture Overview
 
-The skill sits between the Agent's reasoning layer and the Solana RPC network, acting as an intelligent firewall.
+The skill acts as an intelligent safety layer between the agent's reasoning and the Solana network.
 
 ```mermaid
 graph TD
     A[Agent Intent / LLM] -->|Proposes Action| B(Safety Middleware)
     B --> C{Pre-flight Checks}
     C -- Pass --> D[Transaction Simulation]
-    C -- Fail --> E[Self-Healing & Prompt Feedback]
+    C -- Fail --> E[Self-Healing & Feedback]
     D -- Success --> F[Scoped On-Chain Execution]
-    D -- Slippage / Error --> E
+    D -- Error / Slippage --> E
     F --> G[State Validation & Receipt]
     E -.->|Context Update| A
-    
+
     classDef secure fill:#e6f3ff,stroke:#0066cc,stroke-width:2px;
     classDef execute fill:#e6ffe6,stroke:#00cc00,stroke-width:2px;
     classDef error fill:#ffe6e6,stroke:#cc0000,stroke-width:2px;
-    
+
     class B,C,D secure;
     class F,G execute;
     class E error;
 ```
 
----
-
 ## 📦 Installation
 
-### One-Liner (Recommended)
+### Add to Solana AI Kit (Recommended)
 
-Install the skill directly into your existing Solana AI Kit project:
-
-```bash
-npm install @cryptojigi/safe-onchain-agent-skill
-```
-
-### Custom Build / Source
-
-For custom modifications or contributing to the skill:
+Clone the skill and add it to your project following the standard pattern used by other skills in the kit:
 
 ```bash
 git clone https://github.com/Cryptojigi/safe-onchain-agent-skill.git
 cd safe-onchain-agent-skill
-npm install
-npm run build
+
+# Run the installer (follow prompts)
+./install.sh
 ```
 
----
+Or manually add it as a git submodule / skill in your `.claude/skills/` directory for progressive loading.
+
+### Source / Development
+
+```bash
+git clone https://github.com/Cryptojigi/safe-onchain-agent-skill.git
+cd safe-onchain-agent-skill
+```
 
 ## 🚀 Usage Examples
 
-### 1. Safe Jupiter Swap (Guarded Execution)
+### 1. Safer Jupiter Swap (Prompt Example)
 
-Instead of using the default swap tool, route it through the Safe Executor. If the slippage simulation fails, the agent will automatically recalculate and retry without crashing the session.
+When the skill is loaded, Claude will automatically:
+- Simulate the swap before suggesting any transaction
+- Validate slippage against current market conditions
+- Suggest corrected parameters or retry logic if simulation fails
+- Provide clear reasoning for any adjustments
 
-```typescript
-import { SafeAgentExecutor } from "@cryptojigi/safe-onchain-agent-skill";
-import { JupiterPlugin } from "solana-ai-kit";
+**Example prompt you can use:**
+> “Perform a Jupiter swap of 25 USDC to SOL with 0.5% slippage. Use safe execution.”
 
-// Initialize with a scoped session key (max 50 USDC allowance)
-const executor = new SafeAgentExecutor(connection, sessionKeypair, {
-    maxComputeUnits: 800_000,
-    strictSimulation: true,
-    autoRetry: true
-});
+Claude will now simulate first, check for realistic slippage, and only then provide the final transaction instructions.
 
-// The executor simulates the Jupiter route before broadcasting
-const result = await executor.executeTool(JupiterPlugin.swap, {
-    inputToken: "USDC",
-    outputToken: "SOL",
-    amount: 25.0,
-    slippageBps: 50 // Executor will validate if this is realistic via simulation
-});
+### 2. Autonomous Position Monitoring with Self-Healing
 
-console.log(result.receipt); // Confirmed on-chain tx signature
-```
+The skill enables agents to run monitoring loops that recover gracefully from common failures (expired blockhash, RPC issues, minor price movements). Claude can now suggest safe rebalancing logic with built-in simulation and error recovery patterns.
 
-### 2. Autonomous Monitoring Agent (Self-Healing)
+### 3. Progressive Loading in the Solana AI Kit
 
-Agents running on cron jobs often fail due to expired blockhashes or transient RPC drops. The `SafeAgentExecutor` handles this gracefully.
-
-```typescript
-import { createMonitoringLoop } from "@cryptojigi/safe-onchain-agent-skill/utils";
-
-// This loop runs every 5 minutes. If an RPC error occurs, the skill's
-// self-healing module catches it, updates the RPC endpoint if necessary,
-// and ensures the agent's state machine isn't broken.
-createMonitoringLoop(async () => {
-    const health = await executor.runPreFlightChecks();
-    if (health.needsRebalance) {
-        await executor.executeTool(MeteoraPlugin.adjustPosition, {
-            pool: "SOL-USDC",
-            targetRatio: 0.5
-        });
-    }
-}, 300000);
-```
-
-### 3. Progressive Loading with Solana AI Kit
-
-To keep your LLM context window small, load safety modules progressively based on the conversational context.
-
-```typescript
-import { setupSafeAgent } from "@cryptojigi/safe-onchain-agent-skill";
-import { Agent } from "solana-ai-kit";
-
-const agent = new Agent({
-    model: "gpt-4o",
-    // Only load the simulation schema when an on-chain action is detected
-    skills: [setupSafeAgent({ progressiveLoad: true })]
-});
-```
-
----
+The skill is designed for efficient context usage. Safety modules (simulation rules, error maps, permission patterns) are loaded only when the conversation involves on-chain actions.
 
 ## 🤝 Contributing
 
-We welcome contributions to make on-chain agents safer for everyone. Please check out our [Contributing Guidelines](CONTRIBUTING.md) for details on submitting pull requests, setting up your development environment, and running the test suite.
+Contributions that improve on-chain agent safety are welcome.
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-safety-check`)
-3. Commit your changes (`git commit -m 'Add amazing safety check'`)
-4. Push to the branch (`git push origin feature/amazing`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Make your changes
+4. Open a Pull Request
+
+Please keep changes focused, well-documented, and aligned with production-grade standards.
 
 ---
 
-**Safe On-Chain Agent Skill** is built with ❤️ for the Solana AI ecosystem.
+**Safe On-Chain Solana Agent Skill** is built to help the Solana ecosystem move toward trustworthy autonomous agents.
+
+*MIT License © 2026*
